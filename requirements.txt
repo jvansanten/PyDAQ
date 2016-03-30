@@ -2,7 +2,7 @@ numpy
 pyserial
 quantities
 flufl.enum
-mathplotlib
+matplotlib
 pyside
 pyqt4
 pyqt5
