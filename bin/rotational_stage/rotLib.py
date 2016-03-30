@@ -7,6 +7,29 @@ from ..parser_wrapper import parsers
 ##other file move left right like started imports low level
 
 #conversion for nice view:             print [hex(i) for i in struct.unpack("I",resp[10:14])]
+import contextlib
+@contextlib.contextmanager
+def open_apt_device(port, timeout=0.5):
+	if isinstance(port, str):
+		# serial port
+		dev = serial.Serial(port ,115200, rtscts=True, timeout=timeout, writeTimeout=0.5)
+		dev.flushInput()
+		dev.flushOutput()
+		dev.flush()
+	elif isinstance(port, int):
+		# ordinal USB device
+		import ftd2xx
+		from ftd2xx import defines
+		dev = ftd2xx.open(port)
+		dev.setBaudRate(115200)
+		dev.setDataCharacteristics(defines.BITS_8, defines.STOP_BITS_1, defines.PARITY_NONE)
+		dev.purge(defines.PURGE_RX | defines.PURGE_TX)
+		dev.resetDevice()
+		dev.setFlowControl(defines.FLOW_RTS_CTS,0,0)
+		dev.setRts()
+		dev.setTimeouts(int(timeout*1000), 500)
+	yield dev
+	dev.close()
 
 class rotStages:
 
@@ -76,13 +99,6 @@ class rotControler:
 
     def __init__(self,port="/dev/ttyUSB0"):
         self.port=port
-        self.baud=115200
-        self.rtscts=True
-        self.ser=serial.Serial(self.port ,self.baud, rtscts=self.rtscts)
-        self.ser.flushInput()
-        self.ser.flushOutput()
-        self.ser.flush()
-        self.ser.close()
         self._dest = "\x11"
         '''
         # Provide defaults
@@ -171,26 +187,20 @@ class rotControler:
 
 
     def instruction(self, packet):
-        self.ser=serial.Serial(self.port, self.baud, rtscts=self.rtscts)
-        self.ser.write(packet)
-        self.ser.close()
+        with open_apt_device(self.port) as ser:
+            ser.write(packet)
 
     def queryInstruction(self, packet, expected=None, expectedB=6, decode=True):
-        self.ser=serial.Serial(self.port, self.baud, rtscts=self.rtscts)
-        self.ser.write(packet)
-        recieved=self.ser.read(size=expectedB)
-        self.ser.close()
+        with open_apt_device(self.port) as ser:
+            ser.write(packet)
+            recieved=ser.read(expectedB)
         if decode:
             return self.readPacket(recieved, expected, expectedB)
         return recieve
 
     def recieve(self, expected, expectedB=6, block=True, decode=True):
-        if block:
-            self.ser=serial.Serial(self.port, self.baud, rtscts=self.rtscts, timeout=None)
-        else:
-            self.ser=serial.Serial(self.port, self.baud, rtscts=self.rtscts, timeout=0.01)
-        recieved=self.ser.read(size=expectedB)
-        self.ser.close()
+        with open_apt_device(self.port, timeout=[0.01,None][block]) as ser:
+            recieved=ser.read(size=expectedB)
         if decode:
             return self.readPacket(recieved, expected, expectedB)
         return recieve

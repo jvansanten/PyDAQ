@@ -35,6 +35,7 @@ class files(object):
 
 
 
+from .rotational_stage.rotLib import open_apt_device
 
 class serialports:
 #	import PyQt5.QtSerialPort
@@ -59,7 +60,13 @@ class serialports:
 			A list of available serial ports
 		"""
 		if self.sys.platform.startswith('win'):
-		    ports = ['COM' + str(i + 1) for i in range(256)]
+	            from serial.tools.list_ports import comports
+	            ports = sorted([c[0] for c in comports()])
+		    try:
+		        import ftd2xx
+		        ports = range(len(ftd2xx.listDevices())) + ports
+		    except ImportError:
+		        pass
 		elif self.sys.platform.startswith('linux') or self.sys.platform.startswith('cygwin'):
 		    # this is to exclude your current terminal "/dev/tty"
 		    #ports = self.glob.glob('/dev/tty[A-Za-z]*')
@@ -130,27 +137,18 @@ class serialports:
 			list_.append(help)
 		return ''.join(list_[0:-1])
 
-
 	def find_rot_platform(self):
+
 		for port in self.ports:
 			try:
-				self.ser=self.serial.Serial(port ,115200, rtscts=True, timeout=0.5)
-				self.ser.flushInput()
-				self.ser.flushOutput()
-				self.ser.flush()
 				packet=self.struct.pack("H",0x0005)
 				packet+="\x00"
 				packet+="\x00"
 				packet+="\x11"
 				packet+="\x01"
-				self.ser.write(packet)
-				#self.ser.write(packet)
-				#self.ser.write(packet)
-				#recieved=""
-				#for i in range(90):
-				#	recieved+=self.ser.read()
-				recieved=self.ser.read(size=90)
-				self.ser.close()
+				with open_apt_device(port) as ser:
+					ser.write(packet)
+					recieved=ser.read(90)
 				#header = recieved[:6]
 				#msg_id, length, dest, source = self.struct.unpack('<HHBB', header)
 				#dest ^= 0x80 # Turn off 0x80.
